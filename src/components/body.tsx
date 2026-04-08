@@ -1,29 +1,25 @@
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import PokeApi from "../composables/pokeApi";
 import PokemonCard, { SkeletonCard } from "../baseComponents/baseCards.tsx";
 
 export default function PokemonGrid({ searchQuery }: { searchQuery: string }) {
     const navigate = useNavigate();
     
-    const [pokemons, setPokemons] = useState<any[]>([]);        // Pokémon de la página actual
+    const [pokemons, setPokemons] = useState<any[]>([]);        
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
     const [totalCount, setTotalCount] = useState(0);
     
     const perPage = 12;
-    const api = PokeApi();
 
-    // Cargar Pokémon según la página actual (12 en 12)
     useEffect(() => {
         const fetchPage = async () => {
             try {
                 setLoading(true);
-                setPokemons([]); // Limpiar mientras carga
+                setPokemons([]); 
 
                 const offset = (page - 1) * perPage;
                 
-                // 1. Obtener lista paginada desde PokeAPI
                 const response = await fetch(
                     `https://pokeapi.co/api/v2/pokemon?limit=${perPage}&offset=${offset}`
                 );
@@ -31,7 +27,6 @@ export default function PokemonGrid({ searchQuery }: { searchQuery: string }) {
 
                 setTotalCount(data.count);
 
-                // 2. Obtener detalles de los 12 Pokémon
                 const detailedPromises = data.results.map(async (p: any) => {
                     try {
                         const details = await fetch(p.url).then(res => res.json());
@@ -58,13 +53,11 @@ export default function PokemonGrid({ searchQuery }: { searchQuery: string }) {
             }
         };
 
-        // Solo cargar si NO hay búsqueda activa
         if (!searchQuery.trim()) {
             fetchPage();
         }
-    }, [page]); // ← Se ejecuta cada vez que cambia la página
+    }, [page]); 
 
-    // Manejo de búsqueda (se hace en cliente porque es más rápido para pocas páginas)
     const filteredPokemons = useMemo(() => {
         if (!searchQuery.trim()) return pokemons;
 
@@ -72,7 +65,7 @@ export default function PokemonGrid({ searchQuery }: { searchQuery: string }) {
         return pokemons.filter(p => p.name.toLowerCase().includes(query));
     }, [pokemons, searchQuery]);
 
-    // Resetear página al buscar
+
     useEffect(() => {
         setPage(1);
     }, [searchQuery]);
@@ -99,7 +92,7 @@ export default function PokemonGrid({ searchQuery }: { searchQuery: string }) {
                     )}
                 </div>
 
-                {/* Paginación - Solo se muestra cuando NO estás buscando */}
+                
                 {!searchQuery.trim() && totalPages > 1 && !loading && (
                     <div className="flex justify-center gap-4 mt-10 mb-6">
                         <button
