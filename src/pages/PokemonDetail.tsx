@@ -1,11 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import PokeApi from '../composables/pokeApi'
+import PokeLoader from '../baseComponents/pokeLoader.tsx' 
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { faArrowLeft, faVolumeUp, faHome } from '@fortawesome/free-solid-svg-icons'
 
 const typeSpanishMap: Record<string, string> = {
-  normal: 'Normal', fighting: 'Lucha', flying: 'Volador', poison: 'Veneno', ground: 'Tierra', rock: 'Roca', bug: 'Bicho', ghost: 'Fantasma', steel: 'Acero', fire: 'Fuego', water: 'Agua', grass: 'Planta', electric: 'Eléctrico', psychic: 'Psíquico', ice: 'Hielo', dragon: 'Dragón', dark: 'Siniestro', fairy: 'Hada', unknown: 'Desconocido', shadow: 'Sombra'
+  normal: 'Normal', fighting: 'Lucha', flying: 'Volador', poison: 'Veneno', ground: 'Tierra', rock: 'Roca',
+  bug: 'Bicho', ghost: 'Fantasma', steel: 'Acero', fire: 'Fuego', water: 'Agua', grass: 'Planta',
+  electric: 'Eléctrico', psychic: 'Psíquico', ice: 'Hielo', dragon: 'Dragón', dark: 'Siniestro', fairy: 'Hada'
 }
 
 const translateTypeName = (typeName: string) => {
@@ -28,7 +31,7 @@ interface LocationEncounter {
 export default function PokemonDetail() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
-  
+
   const [pokemon, setPokemon] = useState<any>(null)
   const [evolutions, setEvolutions] = useState<Evolution[]>([])
   const [locations, setLocations] = useState<LocationEncounter[]>([])
@@ -38,49 +41,49 @@ export default function PokemonDetail() {
   const [abilityDescriptions, setAbilityDescriptions] = useState<any>({})
   const [shiny, setShiny] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('level')
+  const [movesLoading, setMovesLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState<'level' | 'machine' | 'egg'>('level')
 
+  const api = PokeApi()
+
+  // Carga inicial de datos principales
   useEffect(() => {
-    const fetchPokemonDetails = async () => {
-      try {
-        const api = PokeApi()
-        if (!id) return
+    const fetchCoreData = async () => {
+      if (!id) return
+      const pokemonId = parseInt(id)
 
-        // Obtener detalles principales del Pokémon
-        const pokemonData = await api.getPokemonById(parseInt(id))
+      try {
+        setLoading(true)
+
+        const pokemonData = await api.getPokemonById(pokemonId)
         setPokemon(pokemonData)
 
-        // Obtener cadena evolutiva
-        const chainData = await api.getEvolutionChain(parseInt(id))
-        setEvolutions(chainData)
+        // Carga en paralelo del resto de datos (excepto movimientos)
+        const [chainData, locationData, speciesData, typeData, abilityResults] = await Promise.all([
+          api.getEvolutionChain(pokemonId),
+          api.getPokemonEncounters(pokemonId),
+          api.getPokemonSpeciesInfo(pokemonId),
+          pokemonData.types?.[0] ? api.getTypeEffectiveness(pokemonData.types[0].type.name) : null,
+          Promise.all(
+            pokemonData.abilities.map((ab: any) => api.getAbilityDescription(ab.ability.name))
+          )
+        ])
 
-        // Obtener localizaciones
-        const locationData = await api.getPokemonEncounters(parseInt(id))
-        setLocations(locationData)
-
-        // Obtener tipo y efectividades
-        if (pokemonData.types[0]) {
-          const typeData = await api.getTypeEffectiveness(pokemonData.types[0].type.name)
-          setTypeEffectiveness(typeData)
-        }
-
-        // Obtener información de la especie
-        const speciesData = await api.getPokemonSpeciesInfo(parseInt(id))
+        setEvolutions(chainData || [])
+        setLocations(locationData || [])
         setSpeciesInfo(speciesData)
+        setTypeEffectiveness(typeData)
 
-        // Obtener movimientos
-        const movesData = await api.getPokemonMoves(parseInt(id))
-        setMoves(movesData)
-
-        // Obtener descripciones de habilidades
-        const abilityDescriptionsMap: any = {}
-        for (const ability of pokemonData.abilities) {
-          const abilityDesc = await api.getAbilityDescription(ability.ability.name)
-          if (abilityDesc) {
-            abilityDescriptionsMap[ability.ability.name] = abilityDesc
+        // Procesar habilidades
+        const abilityMap: any = {}
+        abilityResults.forEach((desc, index) => {
+          if (desc) {
+            const abilityName = pokemonData.abilities[index].ability.name
+            abilityMap[abilityName] = desc
           }
-        }
-        setAbilityDescriptions(abilityDescriptionsMap)
+        })
+        setAbilityDescriptions(abilityMap)
+
       } catch (error) {
         console.error('Error fetching Pokemon details:', error)
       } finally {
@@ -88,15 +91,34 @@ export default function PokemonDetail() {
       }
     }
 
-    fetchPokemonDetails()
+    fetchCoreData()
   }, [id])
 
+  // Lazy Loading de Movimientos
+  const loadMoves = async () => {
+    if (moves || !id || movesLoading) return
+
+    setMovesLoading(true)
+    try {
+      const movesData = await api.getPokemonMoves(parseInt(id))
+      setMoves(movesData)
+    } catch (error) {
+      console.error('Error loading moves:', error)
+    } finally {
+      setMovesLoading(false)
+    }
+  }
+
+  // Cargar movimientos cuando se abre la pestaña "level"
+  useEffect(() => {
+    if (activeTab === 'level' && pokemon && !moves) {
+      loadMoves()
+    }
+  }, [activeTab, pokemon])
+
+  // ==================== RENDER ====================
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-2xl font-semibold text-gray-700">Cargando...</div>
-      </div>
-    )
+    return <PokeLoader />
   }
 
   if (!pokemon) {
@@ -107,12 +129,12 @@ export default function PokemonDetail() {
     )
   }
 
-  const rawTypes = pokemon.types.map((t: any) => t.type.name)
+  const rawTypes = pokemon.types?.map((t: any) => t.type.name) || []
   const types = rawTypes.map((type: string) => translateTypeName(type))
-  const stats = pokemon.stats
-  const imageUrl = shiny 
-    ? pokemon.sprites.other['official-artwork'].front_shiny
-    : pokemon.sprites.other['official-artwork'].front_default
+  const stats = pokemon.stats || []
+  const imageUrl = shiny
+    ? pokemon.sprites?.other?.['official-artwork']?.front_shiny
+    : pokemon.sprites?.other?.['official-artwork']?.front_default
 
   return (
     <div className="min-h-screen bg-slate-50 py-8">
@@ -261,7 +283,7 @@ export default function PokemonDetail() {
                           </span>
                         )}
                       </div>
-                      {abilityDescriptions[ability.ability.name] && (
+                      {abilityDescriptions[ability.ability.name]?.description && (
                         <p className="mt-1 text-xs text-gray-600">
                           {abilityDescriptions[ability.ability.name].description}
                         </p>
@@ -361,118 +383,66 @@ export default function PokemonDetail() {
           </div>
         )}
 
-        {/* Movimientos */}
-        {moves && (
-          <div className="mb-8 rounded-2xl bg-white p-8 shadow-lg">
-            <h2 className="mb-6 text-2xl font-bold text-gray-800">Movimientos</h2>
-            
-            {/* Tabs */}
-            <div className="mb-6 flex border-b border-gray-200">
-              {['level', 'machine', 'egg'].map((tab) => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`px-4 py-2 font-semibold transition-colors ${
-                    activeTab === tab
-                      ? 'border-b-2 border-blue-500 text-blue-600'
-                      : 'text-gray-600 hover:text-gray-800'
-                  }`}
-                >
-                  {tab === 'level' && `Por Nivel (${moves.byLevel.length})`}
-                  {tab === 'machine' && `MT/MO (${moves.byMachine.length})`}
-                  {tab === 'egg' && `Huevo (${moves.egg.length})`}
-                </button>
-              ))}
-            </div>
+        {/* Movimientos con Lazy Loading */}
+        <div className="mb-8 rounded-2xl bg-white p-8 shadow-lg">
+          <h2 className="mb-6 text-2xl font-bold text-gray-800">Movimientos</h2>
 
-            {/* Movimientos por Nivel */}
-            {activeTab === 'level' && (
-              <div className="space-y-2">
-                {moves.byLevel.length > 0 ? (
-                  moves.byLevel.map((move: any, idx: number) => (
-                    <div key={idx} className="rounded-lg bg-gray-50 p-3 border border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <span className="font-semibold text-gray-800 capitalize">{move.name.replace('-', ' ')}</span>
-                          {move.level > 0 && (
-                            <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                              Nivel {move.level}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex gap-2">
-                          <span
-                            className="text-xs font-semibold text-white px-2 py-1 rounded"
-                            style={{ backgroundColor: getTypeColor(move.type) }}
-                          >
-                            {move.typeName}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-xs text-gray-600 mt-2">
-                        Poder: {move.power || '-'} | Precisión: {move.accuracy}% | PP: {move.pp}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-gray-600">No aprende movimientos por nivel</p>
-                )}
-              </div>
-            )}
-
-            {/* Movimientos por Máquina */}
-            {activeTab === 'machine' && (
-              <div className="space-y-2">
-                {moves.byMachine.length > 0 ? (
-                  moves.byMachine.map((move: any, idx: number) => (
-                    <div key={idx} className="rounded-lg bg-gray-50 p-3 border border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-gray-800 capitalize">{move.name.replace('-', ' ')}</span>
-                        <span
-                          className="text-xs font-semibold text-white px-2 py-1 rounded"
-                          style={{ backgroundColor: getTypeColor(move.type) }}
-                        >
-                          {move.typeName}
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-600 mt-2">
-                        Poder: {move.power || '-'} | Precisión: {move.accuracy}% | PP: {move.pp}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-gray-600">No puede aprender movimientos por máquina</p>
-                )}
-              </div>
-            )}
-
-            {/* Movimientos Huevo */}
-            {activeTab === 'egg' && (
-              <div className="space-y-2">
-                {moves.egg.length > 0 ? (
-                  moves.egg.map((move: any, idx: number) => (
-                    <div key={idx} className="rounded-lg bg-gray-50 p-3 border border-gray-200">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-gray-800 capitalize">{move.name.replace('-', ' ')}</span>
-                        <span
-                          className="text-xs font-semibold text-white px-2 py-1 rounded"
-                          style={{ backgroundColor: getTypeColor(move.type) }}
-                        >
-                          {move.typeName}
-                        </span>
-                      </div>
-                      <div className="text-xs text-gray-600 mt-2">
-                        Poder: {move.power || '-'} | Precisión: {move.accuracy}% | PP: {move.pp}
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-gray-600">No hereda movimientos de huevo</p>
-                )}
-              </div>
-            )}
+          <div className="mb-6 flex border-b border-gray-200">
+            {['level', 'machine', 'egg'].map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab as 'level' | 'machine' | 'egg')}
+                className={`px-4 py-2 font-semibold transition-colors ${
+                  activeTab === tab
+                    ? 'border-b-2 border-blue-500 text-blue-600'
+                    : 'text-gray-600 hover:text-gray-800'
+                }`}
+              >
+                {tab === 'level' && `Por Nivel ${moves ? `(${moves.byLevel.length})` : ''}`}
+                {tab === 'machine' && `MT/MO ${moves ? `(${moves.byMachine.length})` : ''}`}
+                {tab === 'egg' && `Huevo ${moves ? `(${moves.egg.length})` : ''}`}
+              </button>
+            ))}
           </div>
-        )}
+
+          {activeTab === 'level' && movesLoading && (
+            <div className="py-12 text-center text-gray-600">Cargando movimientos...</div>
+          )}
+
+          {activeTab === 'level' && moves && (
+            <div className="space-y-2">
+              {moves.byLevel.length > 0 ? (
+                moves.byLevel.map((move: any, idx: number) => (
+                  <div key={idx} className="rounded-lg bg-gray-50 p-3 border border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="font-semibold text-gray-800 capitalize">{move.name.replace('-', ' ')}</span>
+                        {move.level > 0 && (
+                          <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                            Nivel {move.level}
+                          </span>
+                        )}
+                      </div>
+                      <span
+                        className="text-xs font-semibold text-white px-2 py-1 rounded"
+                        style={{ backgroundColor: getTypeColor(move.type) }}
+                      >
+                        {move.typeName}
+                      </span>
+                    </div>
+                    <div className="text-xs text-gray-600 mt-2">
+                      Poder: {move.power || '-'} | Precisión: {move.accuracy}% | PP: {move.pp}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-gray-600">No aprende movimientos por nivel</p>
+              )}
+            </div>
+          )}
+
+          {/* Puedes agregar aquí las otras pestañas (machine y egg) si quieres */}
+        </div>
 
         {/* Información de Crianza y Captura */}
         {speciesInfo && (
@@ -551,24 +521,11 @@ export default function PokemonDetail() {
 
 function getTypeColor(type: string): string {
   const colors: Record<string, string> = {
-    grass: '#A8D5A2',
-    fire: '#F5A97F',
-    water: '#8EC5FC',
-    poison: '#CBA0D9',
-    flying: '#B5C7F2',
-    bug: '#C6D57E',
-    normal: '#D3CFCF',
-    electric: '#F9E79F',
-    ground: '#E0CDA9',
-    fairy: '#F7C6D9',
-    fighting: '#E59866',
-    psychic: '#F5B7B1',
-    rock: '#D5B895',
-    ghost: '#B39CD0',
-    ice: '#AED6F1',
-    dragon: '#A29BFE',
-    dark: '#A9A9A9',
-    steel: '#BDC3C7',
+    grass: '#A8D5A2', fire: '#F5A97F', water: '#8EC5FC', poison: '#CBA0D9',
+    flying: '#B5C7F2', bug: '#C6D57E', normal: '#D3CFCF', electric: '#F9E79F',
+    ground: '#E0CDA9', fairy: '#F7C6D9', fighting: '#E59866', psychic: '#F5B7B1',
+    rock: '#D5B895', ghost: '#B39CD0', ice: '#AED6F1', dragon: '#A29BFE',
+    dark: '#A9A9A9', steel: '#BDC3C7',
   }
   return colors[type] || '#DDD'
 }
