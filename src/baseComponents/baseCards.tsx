@@ -1,4 +1,12 @@
-export default function PokemonCard({ name, number, types, image, onClick }) {
+type PokemonCardProps = {
+  name: string
+  number: number
+  types: string[]
+  image: string
+  onClick?: () => void
+}
+export default function PokemonCard({ name, number, types, image, onClick }: PokemonCardProps) {
+    
     return (
     <div 
         onClick={onClick}
@@ -20,7 +28,7 @@ export default function PokemonCard({ name, number, types, image, onClick }) {
         <h2 className="text-xl font-bold capitalize text-gray-800">{name}</h2>
 
         <div className="flex justify-center gap-2 mt-3 flex-wrap">
-            {types.map((type) => (
+            {types.map((type: string) => (
             <span
                 key={type}
                 className="px-3 py-1 rounded-full text-xs font-semibold text-white"

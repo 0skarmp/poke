@@ -20,7 +20,7 @@ export default function PokeApi(): PokeApiType {
     }
 
     const typeSpanishMap: Record<string, string> = {
-        normal: 'Normal', fighting: 'Lucha', flying: 'Volador', poison: 'Veneno', ground: 'Tierra', rock: 'Roca', bug: 'Bicho', ghost: 'Fantasma', steel: 'Acero', fire: 'Fuego', water: 'Agua', grass: 'Planta', electric: 'Eléctrico', psychic: 'Psíquico', ice: 'Hielo', dragon: 'Dragón', dark: 'Siniestro', fairy: 'Hada', unknown: 'Desconocido', shadow: 'Sombra', fairy: 'Hada'
+        normal: 'Normal', fighting: 'Lucha', flying: 'Volador', poison: 'Veneno', ground: 'Tierra', rock: 'Roca', bug: 'Bicho', ghost: 'Fantasma', steel: 'Acero', fire: 'Fuego', water: 'Agua', grass: 'Planta', electric: 'Eléctrico', psychic: 'Psíquico', ice: 'Hielo', dragon: 'Dragón', dark: 'Siniestro', unknown: 'Desconocido', shadow: 'Sombra', fairy: 'Hada'
     }
 
     const gameSpanishMap: Record<string, string> = {
@@ -114,7 +114,7 @@ export default function PokeApi(): PokeApiType {
         }
     }
 
-    const getPokemons = async (limit: number = 20) => {
+    const getPokemons = async () => {
     try {
         const response = await fetch(`https://pokeapi.co/api/v2/pokemon?limit=999`);
         if (!response.ok) {
@@ -155,28 +155,31 @@ const getEvolutionChain = async (id: number) => {
         
         const evolutions: any[] = [];
         
-        const processChain = async (chain: any, level: number = 0) => {
-            const speciesName = chain.species.name;
-            const speciesResponse = await fetch(`https://pokeapi.co/api/v2/pokemon-species/${speciesName}`);
-            const speciesInfo = await speciesResponse.json();
-            
-            const pokemonRes = await fetch(`https://pokeapi.co/api/v2/pokemon/${speciesName}`);
-            const pokemonData = await pokemonRes.json();
-            
-            const speciesSpanishName = translateFromLanguage(speciesInfo.names, 'es', 'en') || speciesName
-            evolutions.push({
-                name: speciesSpanishName,
-                level: chain.evolution_details && chain.evolution_details[0]?.min_level || 0,
-                id: pokemonData.id,
-                image: pokemonData.sprites.other['official-artwork'].front_default,
-            });
-            
-            if (chain.evolves_to.length > 0) {
-                for (const nextChain of chain.evolves_to) {
-                    await processChain(nextChain, nextChain.evolution_details[0]?.min_level || 0);
-                }
-            }
-        };
+       const processChain = async (chain: any) => {
+  const speciesName = chain.species.name;
+
+  const speciesResponse = await fetch(`https://pokeapi.co/api/v2/pokemon-species/${speciesName}`);
+  const speciesInfo = await speciesResponse.json();
+
+  const pokemonRes = await fetch(`https://pokeapi.co/api/v2/pokemon/${speciesName}`);
+  const pokemonData = await pokemonRes.json();
+
+  const speciesSpanishName =
+    translateFromLanguage(speciesInfo.names, 'es', 'en') || speciesName;
+
+  evolutions.push({
+    name: speciesSpanishName,
+    level: chain.evolution_details && chain.evolution_details[0]?.min_level || 0,
+    id: pokemonData.id,
+    image: pokemonData.sprites.other['official-artwork'].front_default,
+  });
+
+  if (chain.evolves_to.length > 0) {
+    for (const nextChain of chain.evolves_to) {
+      await processChain(nextChain);
+    }
+  }
+};
         
         await processChain(chainData.chain);
         return evolutions;
