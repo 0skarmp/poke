@@ -5,20 +5,34 @@ import PokemonCard, { SkeletonCard } from "../baseComponents/baseCards.tsx";
 
 export default function PokemonGrid({ searchQuery }: { searchQuery: string }) {
     const navigate = useNavigate();
-    const [allPokemons, setAllPokemons] = useState<any[]>([]);
+    
+    const [pokemons, setPokemons] = useState<any[]>([]);        // Pokémon de la página actual
     const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
+    const [totalCount, setTotalCount] = useState(0);
+    
     const perPage = 12;
-
     const api = PokeApi();
 
+    // Cargar Pokémon según la página actual (12 en 12)
     useEffect(() => {
-        const fetchBasicPokemons = async () => {
+        const fetchPage = async () => {
             try {
                 setLoading(true);
-                const basicList = await api.getPokemons(386); // Cambia a 649 o 1008 si quieres más generaciones
+                setPokemons([]); // Limpiar mientras carga
 
-                const detailedPromises = basicList.map(async (p: any) => {
+                const offset = (page - 1) * perPage;
+                
+                // 1. Obtener lista paginada desde PokeAPI
+                const response = await fetch(
+                    `https://pokeapi.co/api/v2/pokemon?limit=${perPage}&offset=${offset}`
+                );
+                const data = await response.json();
+
+                setTotalCount(data.count);
+
+                // 2. Obtener detalles de los 12 Pokémon
+                const detailedPromises = data.results.map(async (p: any) => {
                     try {
                         const details = await fetch(p.url).then(res => res.json());
                         return {
@@ -28,6 +42,7 @@ export default function PokemonGrid({ searchQuery }: { searchQuery: string }) {
                             sprites: details.sprites
                         };
                     } catch (err) {
+                        console.error(`Error loading ${p.name}`);
                         return null;
                     }
                 });
@@ -35,39 +50,34 @@ export default function PokemonGrid({ searchQuery }: { searchQuery: string }) {
                 const results = await Promise.all(detailedPromises);
                 const validPokemons = results.filter((p): p is any => p !== null);
 
-                setAllPokemons(validPokemons);
+                setPokemons(validPokemons);
             } catch (error) {
-                console.error("Error fetching pokemons:", error);
+                console.error("Error fetching page:", error);
             } finally {
                 setLoading(false);
             }
         };
 
-        fetchBasicPokemons();
-    }, []);
+        // Solo cargar si NO hay búsqueda activa
+        if (!searchQuery.trim()) {
+            fetchPage();
+        }
+    }, [page]); // ← Se ejecuta cada vez que cambia la página
 
+    // Manejo de búsqueda (se hace en cliente porque es más rápido para pocas páginas)
+    const filteredPokemons = useMemo(() => {
+        if (!searchQuery.trim()) return pokemons;
+
+        const query = searchQuery.toLowerCase().trim();
+        return pokemons.filter(p => p.name.toLowerCase().includes(query));
+    }, [pokemons, searchQuery]);
+
+    // Resetear página al buscar
     useEffect(() => {
         setPage(1);
     }, [searchQuery]);
 
-    const filteredAndPaginated = useMemo(() => {
-        let filtered = allPokemons;
-
-        if (searchQuery.trim()) {
-            const query = searchQuery.toLowerCase().trim();
-            filtered = allPokemons.filter(p => p.name.toLowerCase().includes(query));
-        }
-
-        const start = (page - 1) * perPage;
-        const end = start + perPage;
-
-        return {
-            current: filtered.slice(start, end),
-            totalPages: Math.ceil(filtered.length / perPage)
-        };
-    }, [allPokemons, searchQuery, page]);
-
-    const { current, totalPages } = filteredAndPaginated;
+    const totalPages = Math.ceil(totalCount / perPage);
 
     return (
         <div className="flex justify-center px-4 py-8">
@@ -76,7 +86,7 @@ export default function PokemonGrid({ searchQuery }: { searchQuery: string }) {
                     {loading ? (
                         <SkeletonCard count={12} />
                     ) : (
-                        current.map((p) => (
+                        filteredPokemons.map((p) => (
                             <PokemonCard
                                 key={p.id}
                                 name={p.name}
@@ -89,12 +99,13 @@ export default function PokemonGrid({ searchQuery }: { searchQuery: string }) {
                     )}
                 </div>
 
+                {/* Paginación - Solo se muestra cuando NO estás buscando */}
                 {!searchQuery.trim() && totalPages > 1 && !loading && (
                     <div className="flex justify-center gap-4 mt-10 mb-6">
                         <button
                             onClick={() => setPage(prev => Math.max(prev - 1, 1))}
                             disabled={page === 1}
-                            className="px-6 py-2 bg-white rounded-xl border border-black font-semibold transition-all hover:scale-105 disabled:opacity-50"
+                            className="px-6 py-2 bg-white rounded-xl border border-black font-semibold transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Anterior
                         </button>
@@ -106,10 +117,16 @@ export default function PokemonGrid({ searchQuery }: { searchQuery: string }) {
                         <button
                             onClick={() => setPage(prev => (prev < totalPages ? prev + 1 : prev))}
                             disabled={page === totalPages}
-                            className="px-6 py-2 bg-white rounded-xl border border-black font-semibold transition-all hover:scale-105 disabled:opacity-50"
+                            className="px-6 py-2 bg-white rounded-xl border border-black font-semibold transition-all hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             Siguiente
                         </button>
+                    </div>
+                )}
+
+                {searchQuery.trim() && filteredPokemons.length === 0 && (
+                    <div className="text-center py-12 text-gray-500 text-lg">
+                        No se encontraron Pokémon con "{searchQuery}"
                     </div>
                 )}
             </div>
