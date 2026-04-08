@@ -1,80 +1,114 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import PokeApi from "../composables/pokeApi";
-import PokemonCard from "../baseComponents/baseCards.tsx";
+import PokemonCard, { SkeletonCard } from "../baseComponents/baseCards.tsx";
 
 export default function PokemonGrid({ searchQuery }: { searchQuery: string }) {
     const navigate = useNavigate();
-    const [pokemons, setPokemons] = useState<any[]>([]);
+    const [allPokemons, setAllPokemons] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
     const [page, setPage] = useState(1);
-    const perPage = 12; 
+    const perPage = 12;
+
+    const api = PokeApi();
 
     useEffect(() => {
-        const fetchData = async () => {
-            const api = PokeApi();
-            const list = await api.getPokemons(150);
-            const detailed = await Promise.all(
-                list.map(async (p: any) => {
-                    const details = await fetch(p.url).then((res) => res.json());
-                    return details;
-                })
-            );
-            setPokemons(detailed);
+        const fetchBasicPokemons = async () => {
+            try {
+                setLoading(true);
+                const basicList = await api.getPokemons(386); // Cambia a 649 o 1008 si quieres más generaciones
+
+                const detailedPromises = basicList.map(async (p: any) => {
+                    try {
+                        const details = await fetch(p.url).then(res => res.json());
+                        return {
+                            id: details.id,
+                            name: details.name,
+                            types: details.types,
+                            sprites: details.sprites
+                        };
+                    } catch (err) {
+                        return null;
+                    }
+                });
+
+                const results = await Promise.all(detailedPromises);
+                const validPokemons = results.filter((p): p is any => p !== null);
+
+                setAllPokemons(validPokemons);
+            } catch (error) {
+                console.error("Error fetching pokemons:", error);
+            } finally {
+                setLoading(false);
+            }
         };
-        fetchData();
+
+        fetchBasicPokemons();
     }, []);
 
-    // Reset page when search query changes
     useEffect(() => {
         setPage(1);
     }, [searchQuery]);
 
-    const filteredPokemons = searchQuery.trim()
-        ? pokemons.filter((p) =>
-            p.name.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-        : pokemons;
+    const filteredAndPaginated = useMemo(() => {
+        let filtered = allPokemons;
 
-    const start = (page - 1) * perPage;
-    const end = start + perPage;
-    const currentPokemons = filteredPokemons.slice(start, end);
-    const maxPages = Math.ceil(filteredPokemons.length / perPage);
-    const isSearching = searchQuery.trim().length > 0;
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase().trim();
+            filtered = allPokemons.filter(p => p.name.toLowerCase().includes(query));
+        }
+
+        const start = (page - 1) * perPage;
+        const end = start + perPage;
+
+        return {
+            current: filtered.slice(start, end),
+            totalPages: Math.ceil(filtered.length / perPage)
+        };
+    }, [allPokemons, searchQuery, page]);
+
+    const { current, totalPages } = filteredAndPaginated;
 
     return (
         <div className="flex justify-center px-4 py-8">
             <div className="max-w-6xl w-full">
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
-                    {currentPokemons.map((p) => (
-                        <PokemonCard
-                            key={p.id}
-                            name={p.name}
-                            number={p.id}
-                            types={p.types.map((t: any) => t.type.name)}
-                            image={p.sprites.other["official-artwork"].front_default}
-                            onClick={() => navigate(`/pokemon/${p.id}`)}
-                        />
-                    ))}
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+                    {loading ? (
+                        <SkeletonCard count={12} />
+                    ) : (
+                        current.map((p) => (
+                            <PokemonCard
+                                key={p.id}
+                                name={p.name}
+                                number={p.id}
+                                types={p.types.map((t: any) => t.type.name)}
+                                image={p.sprites.other?.["official-artwork"]?.front_default}
+                                onClick={() => navigate(`/pokemon/${p.id}`)}
+                            />
+                        ))
+                    )}
                 </div>
 
-                {!isSearching && (
-                    <div className="flex justify-center gap-4 mt-8 mb-4">
+                {!searchQuery.trim() && totalPages > 1 && !loading && (
+                    <div className="flex justify-center gap-4 mt-10 mb-6">
                         <button
-                            onClick={() => setPage((prev) => Math.max(prev - 1, 1))}
+                            onClick={() => setPage(prev => Math.max(prev - 1, 1))}
                             disabled={page === 1}
-                            className="px-6 py-2 bg-white rounded-xl border border-black font-semibold transition-all duration-200 ease-in-out transform hover:scale-105 hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                            className="px-6 py-2 bg-white rounded-xl border border-black font-semibold transition-all hover:scale-105 disabled:opacity-50"
                         >
-                            Back
+                            Anterior
                         </button>
-                        <span className="flex items-center px-4 font-medium text-gray-700">
-                            Page {page} of {Math.max(1, maxPages)}
+
+                        <span className="flex items-center px-6 font-medium text-gray-700">
+                            Página {page} de {totalPages}
                         </span>
+
                         <button
-                            onClick={() => setPage((prev) => (prev < maxPages ? prev + 1 : prev))}
-                            disabled={page >= maxPages}
-                            className="px-6 py-2 bg-white rounded-xl border border-black font-semibold transition-all duration-200 ease-in-out transform hover:scale-105 hover:shadow-2xl disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                            onClick={() => setPage(prev => (prev < totalPages ? prev + 1 : prev))}
+                            disabled={page === totalPages}
+                            className="px-6 py-2 bg-white rounded-xl border border-black font-semibold transition-all hover:scale-105 disabled:opacity-50"
                         >
-                            Next Page
+                            Siguiente
                         </button>
                     </div>
                 )}
