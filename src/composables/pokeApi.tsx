@@ -188,27 +188,31 @@ export default function PokeApi(): PokeApiType {
     };
 
     const getTypeEffectiveness = async (typeName: string) => {
-        try {
-            const typeData = await cachedFetch(`https://pokeapi.co/api/v2/type/${typeName}`);
+    try {
+        const typeData = await cachedFetch(`https://pokeapi.co/api/v2/type/${typeName}`);
 
-            return {
-                name: typeToSpanish(typeData.name),
-                damageFrom: {
-                    double: typeData.damage_relations.take_damage_from.map((t: any) => t.name),
-                    half: typeData.damage_relations.take_damage_half_from.map((t: any) => t.name),
-                    immune: typeData.damage_relations.no_damage_from.map((t: any) => t.name),
-                },
-                damageTo: {
-                    double: typeData.damage_relations.damage_to.map((t: any) => t.name),
-                    half: typeData.damage_relations.damage_to_half.map((t: any) => t.name),
-                    immune: typeData.damage_relations.no_damage_to.map((t: any) => t.name),
-                },
-            };
-        } catch (error) {
-            console.error('Error fetching type effectiveness:', error);
-            return null;
-        }
-    };
+        const relations = typeData.damage_relations;
+
+        return {
+            name: typeToSpanish(typeData.name),
+
+            damageFrom: {
+                double: relations.double_damage_from?.map((t: any) => t.name) || [],
+                half: relations.half_damage_from?.map((t: any) => t.name) || [],
+                immune: relations.no_damage_from?.map((t: any) => t.name) || [],
+            },
+
+            damageTo: {
+                double: relations.double_damage_to?.map((t: any) => t.name) || [],
+                half: relations.half_damage_to?.map((t: any) => t.name) || [],
+                immune: relations.no_damage_to?.map((t: any) => t.name) || [],
+            },
+        };
+    } catch (error) {
+        console.error('Error fetching type effectiveness:', error);
+        return null;
+    }
+};
 
     const getAbilityDescription = async (abilityName: string) => {
         try {
